@@ -187,6 +187,7 @@ public class EchoClient {
     parser.addArgument("--host").type(String.class).setDefault(DEFAULT_HOST);
     parser.addArgument("--async").type(Boolean.class).setDefault(false);
     parser.addArgument("--numChannels").type(Integer.class).setDefault(1);
+    parser.addArgument("--asyncTimeoutInSecs").type(Integer.class).setDefault(5);
 
     Namespace ns = parser.parseArgs(args);
 
@@ -201,6 +202,7 @@ public class EchoClient {
     String host = ns.getString("host");
     boolean async = ns.getBoolean("async");
     int numChannels = ns.getInt("numChannels");
+    int asyncTimeoutInSecs = ns.getInt("asyncTimeoutInSecs");
 
     String message = generateString(payloadKB * 1024);
 
@@ -210,15 +212,13 @@ public class EchoClient {
       tracer = getTracer();
       if (tracer == null) {
         logger.log(Level.WARNING, "Cannot get tracer");
-        return;
       }
+      TraceConfig globalTraceConfig = Tracing.getTraceConfig();
+      globalTraceConfig.updateActiveTraceParams(
+          globalTraceConfig.getActiveTraceParams().toBuilder()
+              .setSampler(Samplers.alwaysSample())
+              .build());
     }
-    TraceConfig globalTraceConfig = Tracing.getTraceConfig();
-    globalTraceConfig.updateActiveTraceParams(
-        globalTraceConfig.getActiveTraceParams().toBuilder()
-            .setSampler(Samplers.alwaysSample())
-            .build());
-
 
     // Starting test
     EchoWithResponseSizeRequest request =
@@ -267,7 +267,7 @@ public class EchoClient {
         for (int i = 0; i < numRpcs; i++) {
           client.asyncEcho(request, latch, timeList);
         }
-        latch.await();
+        latch.await(asyncTimeoutInSecs, TimeUnit.SECONDS);
         long duration = System.currentTimeMillis() - start;
 
         System.out.println("total time: " + duration + "ms");
